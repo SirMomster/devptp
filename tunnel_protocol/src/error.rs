@@ -6,6 +6,13 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     #[from]
     Custom(String),
+    #[from]
+    IoError(std::io::Error),
+    PortParseError {
+        port: String,
+    },
+    #[from]
+    ClosedStreamError(iroh::endpoint::ClosedStream),
 }
 
 impl std::error::Error for Error {}

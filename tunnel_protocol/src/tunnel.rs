@@ -1,90 +1,117 @@
+use crate::Result;
+
 use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
-    EndpointId,
 };
 
-/// Error type for tunnel operations.
-#[derive(Debug)]
-pub enum TunnelError {
-    EmptyPayload,
+use tokio::{io::BufReader, net::TcpStream};
+
+use crate::request::Request;
+use crate::response::Response;
+
+pub const TUNNEL_ALPN: &[u8] = b"devptp/tcp-tunnel/0";
+
+async fn proxy(
+    mut send: iroh::endpoint::SendStream,
+    mut recv: BufReader<iroh::endpoint::RecvStream>,
+    tcp: TcpStream,
+) -> Result<()> {
+    let (mut tcp_read, mut tcp_write) = tcp.into_split();
+
+    let client_to_tcp = tokio::io::copy(&mut recv, &mut tcp_write);
+    let tcp_to_client = tokio::io::copy(&mut tcp_read, &mut send);
+
+    tokio::try_join!(client_to_tcp, tcp_to_client)?;
+
+    send.finish()?;
+    Ok(())
 }
 
-impl std::fmt::Display for TunnelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmptyPayload => write!(f, "empty payload"),
-        }
-    }
-}
-
-impl std::error::Error for TunnelError {}
-
-/// The ALPN identifier for the tunnel protocol.
-pub const TUNNEL_ALPN: &[u8] = b"devptp/tunnel/0";
-
-/// Tunnel protocol handler with echo support.
-///
-/// When `echo` is true, incoming data is echoed back to the sender.
-/// When `echo` is false, the connection is accepted but no data is processed
-/// (placeholder for future port tunneling logic).
+#[derive(Debug, Clone)]
 pub struct Tunnel {
-    echo: bool,
+    allowed_ports: Vec<u16>,
 }
 
 impl Tunnel {
-    /// Create a new Tunnel handler.
-    pub fn new(echo: bool) -> Self {
-        Self { echo }
+    pub fn new(allowed_ports: Vec<u16>) -> Self {
+        Self { allowed_ports }
+    }
+
+    fn port_allowed(&self, port: u16) -> bool {
+        self.allowed_ports.contains(&port)
     }
 }
 
 impl ProtocolHandler for Tunnel {
-    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
-        let node_id = connection.remote_id();
-        println!("tunnel: accepted connection from {node_id}");
+    async fn accept(&self, connection: Connection) -> std::result::Result<(), AcceptError> {
+        self.handle_connection(connection)
+            .await
+            .map_err(|error| AcceptError::from_err(error))
+    }
+}
 
-        // The client opens a bidirectional stream.
-        let (mut send, mut recv) = connection.accept_bi().await?;
+impl Tunnel {
+    async fn handle_connection(&self, connection: Connection) -> Result<()> {
+        loop {
+            let (send, recv) = match connection.accept_bi().await {
+                Ok(streams) => streams,
+                Err(_) => return Ok(()),
+            };
 
-        if self.echo {
-            // Echo mode: read all data from the client and send it back.
-            let buf = recv
-                .read_to_end(usize::MAX)
-                .await
-                .map_err(AcceptError::from_err)?;
+            let tunnel = self.clone();
 
-            if buf.is_empty() {
-                return Err(AcceptError::from_err(TunnelError::EmptyPayload));
+            tokio::spawn(async move {
+                if let Err(error) = tunnel.handle_stream(send, recv).await {
+                    println!("Tunnel stream failed");
+                }
+            });
+        }
+    }
+
+    async fn handle_stream(
+        &self,
+        mut send: iroh::endpoint::SendStream,
+        recv: iroh::endpoint::RecvStream,
+    ) -> Result<()> {
+        let mut recv = BufReader::new(recv);
+
+        let request = Request::read_from(&mut recv).await?;
+
+        match request {
+            Request::Open { port } => {
+                if !self.port_allowed(port) {
+                    Response::Error {
+                        message: format!("port {port} is not allowed"),
+                    }
+                    .write_to(&mut send)
+                    .await?;
+
+                    send.finish()?;
+
+                    return Ok(());
+                }
+
+                let tcp = match TcpStream::connect(("127.0.0.1", port)).await {
+                    Ok(tcp) => tcp,
+                    Err(error) => {
+                        Response::Error {
+                            message: error.to_string(),
+                        }
+                        .write_to(&mut send)
+                        .await?;
+
+                        send.finish()?;
+                        return Ok(());
+                    }
+                };
+
+                Response::Ok.write_to(&mut send).await?;
+
+                proxy(send, recv, tcp).await?;
             }
-
-            // Send back the same data as a response.
-            send.write_all(&buf).await.map_err(AcceptError::from_err)?;
-
-            // Signal we're done sending.
-            send.finish()?;
-
-            // Wait for the remote to close the connection.
-            connection.closed().await;
-        } else {
-            // Placeholder: no-op, ready for future port tunneling logic.
-            // Close the connection immediately.
-            connection.close(0u32.into(), b"");
         }
 
         Ok(())
     }
-}
-
-impl std::fmt::Debug for Tunnel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tunnel").field("echo", &self.echo).finish()
-    }
-}
-
-/// Result of a tunnel operation.
-#[derive(Debug)]
-pub struct TunnelResult {
-    pub node_id: EndpointId,
-    pub payload: Vec<u8>,
 }

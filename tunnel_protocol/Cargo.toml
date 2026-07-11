@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 iroh = "1.0.2"
 derive_more = { version = "2.1.1", features=["from"] }
+tokio = "1.52.3"

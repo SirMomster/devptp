@@ -1,17 +1,41 @@
+# Worktree Plus Configuration
 version: "1.0"
-defaults:
-  base_dir: ".pi/worktrees"
 
+# Default settings for worktrees
+defaults:
+  # Base directory for worktrees (relative to repository root)
+  base_dir: ../worktrees
+
+# Hooks that run after creating a worktree
 hooks:
   post_create:
-    # Copy gitignored secrets from the main repo into the new worktree
-    - type: command
-      command: |
-        MAIN=$(git worktree list --porcelain | head -1 | awk '{print $2}')
-        for f in $(git -C "$MAIN" ls-files --others --ignored --exclude-standard 2>/dev/null | grep -v '/'); do
-          [ -f "$MAIN/$f" ] && cp "$MAIN/$f" . && echo "Copied $f"
-        done
+    # Example: Copy gitignored files from MAIN worktree to new worktree
+    # Note: 'from' is relative to main worktree, 'to' is relative to new worktree
+    # - type: copy
+    #   from: .env        # Copy actual .env file (gitignored)
+    #   to: .env
 
-    # Allow direnv if .envrc is present
+    # Example: Run a command to show all worktrees
     - type: command
-      command: "[ -f .envrc ] && direnv allow || true"
+      command: wtp list
+
+    # More examples (commented out):
+    
+    # Copy AI context files (typically gitignored):
+    # - type: copy
+    #   from: .claude     # Claude AI context
+    #   to: .claude
+    # - type: copy
+    #   from: .cursor/    # Cursor IDE settings
+    #   to: .cursor/
+
+    # Share directories with symlinks:
+    # - type: symlink
+    #   from: .bin        # Shared tool cache
+    #   to: .bin
+    
+    # Run setup commands:
+    # - type: command
+    #   command: npm install
+    # - type: command
+    #   command: echo "Created new worktree!"

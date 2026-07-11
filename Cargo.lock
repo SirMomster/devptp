@@ -3531,6 +3531,7 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "iroh",
+ "tokio",
 ]
 
 [[package]]

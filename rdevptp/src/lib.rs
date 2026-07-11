@@ -18,14 +18,13 @@ pub async fn run_receiver() -> Result<ReceiverResult> {
     endpoint.online().await;
 
     let ping = Ping::new();
-    let echo_tunnel = tunnel::Tunnel::new(true);
-
+    let tunnel_recv = tunnel::Tunnel::new(vec![8000]);
     let ticket = EndpointTicket::new(endpoint.addr());
 
     // Spawn the ping router.
     let router = Router::builder(endpoint.clone())
         .accept(iroh_ping::ALPN, ping)
-        .accept(tunnel::TUNNEL_ALPN, echo_tunnel)
+        .accept(tunnel::TUNNEL_ALPN, tunnel_recv)
         .spawn();
 
     Ok(ReceiverResult {
