@@ -1,0 +1,8 @@
+[package]
+name = "tunnel_protocol"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iroh = "1.0.2"
+derive_more = { version = "2.1.1", features=["from"] }

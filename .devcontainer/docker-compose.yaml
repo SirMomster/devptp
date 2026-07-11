@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  develop:
+    container_name: devptp-dev
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - ..:/workspace/devptp:cached
+    command: sleep infinity

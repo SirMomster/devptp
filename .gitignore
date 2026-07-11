@@ -1,0 +1,3 @@
+/target
+.pi/worktrees/
+.pi/devcontainer.override.json

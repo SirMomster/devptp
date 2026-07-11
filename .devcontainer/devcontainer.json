@@ -1,0 +1,23 @@
+{
+	"name": "devptp",
+	"dockerComposeFile": [
+		"./docker-compose.yaml"
+	],
+	"mounts": [
+		{
+			"source": "devcontainer-cargo-cache",
+			"target": "/usr/local/cargo",
+			"type": "volume"
+		}
+	],
+	"service": "develop",
+	"workspaceFolder": "/workspace/devptp",
+	"forwardPorts": [
+	],
+	"portsAttributes": {
+	},
+  "features": {
+  },
+	"customizations": {
+	}
+}
