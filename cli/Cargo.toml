@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+clap = { version = "4.5.0", features = ["derive"] }
 iroh = "1.0.1"
 iroh-ping = "1.0.0"
 iroh-tickets = "1.0.0"
