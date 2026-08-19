@@ -3,12 +3,22 @@ use clap::{Parser, Subcommand};
 use iroh_tickets::endpoint::EndpointTicket;
 use tokio::signal;
 
-use cdevptp::run_client;
-use rdevptp::run_receiver;
+mod receiver;
+mod client;
+mod error;
+mod proc_net_tcp;
+mod command_handler;
+mod incoming_commands;
+mod port_forwarder;
+
+mod tunnel_protocol;
 
 /// devptp — peer-to-peer networking toolkit built on iroh
 #[derive(Parser)]
-#[command(name = "devptp", about = "P2P networking toolkit for endpoint discovery and ping")]
+#[command(
+    name = "devptp",
+    about = "P2P networking toolkit for endpoint discovery and ping"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -22,6 +32,7 @@ enum Commands {
     Sender {
         /// The ticket string from a receiver
         ticket: String,
+        tui: Option<bool>,
     },
 }
 
@@ -32,7 +43,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Receiver => {
-            let result = run_receiver().await?;
+            let allowed_ports: Vec<u16> = vec![8080, 9090];
+            let result = receiver::run_receiver(allowed_ports).await?;
             println!("Connected: {}", result.ticket);
             signal::ctrl_c()
                 .await
@@ -40,9 +52,11 @@ async fn main() -> Result<()> {
             result.router.endpoint().close().await;
             Ok(())
         }
-        Commands::Sender { ticket } => {
-            let ticket: EndpointTicket = ticket.parse().map_err(|e| anyhow::anyhow!("Invalid ticket: {}", e))?;
-            run_client(ticket).await?;
+        Commands::Sender { ticket, tui: _ } => {
+            let ticket: EndpointTicket = ticket
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Invalid ticket: {}", e))?;
+            client::run_client(ticket).await?;
             Ok(())
         }
     }

@@ -1,16 +1,12 @@
-use tokio::io::{
-    AsyncBufRead,
-    AsyncBufReadExt,
-    AsyncWrite,
-    AsyncWriteExt,
-};
+use super::super::error::{Error, Result};
 
-use crate::error::{Error, Result};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     Ok,
     Error { message: String },
+    Port(u16),
 }
 
 impl Response {
@@ -30,6 +26,12 @@ impl Response {
                 writer.write_all(b"ERR ").await?;
                 writer.write_all(message.as_bytes()).await?;
                 writer.write_all(b"\n").await?;
+            }
+
+            Self::Port(port) => {
+                writer
+                    .write_all(format!("PORT {port}\n").as_bytes())
+                    .await?;
             }
         }
 
@@ -52,7 +54,6 @@ impl Response {
         }
 
         let line = line.trim_end_matches(['\r', '\n']);
-
         if line == "OK" {
             return Ok(Self::Ok);
         }
@@ -69,8 +70,13 @@ impl Response {
             });
         }
 
-        Err(Error::Custom(format!(
-            "invalid tunnel response: {line:?}"
-        )))
+        if let Some(port_str) = line.strip_prefix("PORT ") {
+            let port = port_str.parse::<u16>().map_err(|_| Error::PortParseError {
+                port: port_str.to_string(),
+            })?;
+            return Ok(Self::Port(port));
+        }
+
+        Err(Error::Custom(format!("invalid tunnel response: {line:?}")))
     }
 }

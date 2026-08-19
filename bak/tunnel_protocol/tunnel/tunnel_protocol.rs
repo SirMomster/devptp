@@ -1,14 +1,17 @@
-use crate::Result;
+use super::super::error::{Error, Result};
 
 use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
 };
 
-use tokio::{io::BufReader, net::TcpStream};
+use tokio::{
+    io::{AsyncWriteExt, BufReader},
+    net::TcpStream,
+};
 
-use crate::request::Request;
-use crate::response::Response;
+use crate::tunnel_protocol::tunnel::request::Request;
+use crate::tunnel_protocol::tunnel::response::Response;
 
 pub const TUNNEL_ALPN: &[u8] = b"devptp/tcp-tunnel/0";
 
@@ -19,23 +22,42 @@ async fn proxy(
 ) -> Result<()> {
     let (mut tcp_read, mut tcp_write) = tcp.into_split();
 
-    let client_to_tcp = tokio::io::copy(&mut recv, &mut tcp_write);
-    let tcp_to_client = tokio::io::copy(&mut tcp_read, &mut send);
+    let client_to_tcp = async {
+        let copied = tokio::io::copy(&mut recv, &mut tcp_write).await?;
+        tcp_write.shutdown().await?;
 
-    tokio::try_join!(client_to_tcp, tcp_to_client)?;
+        Ok::<u64, Error>(copied)
+    };
 
-    send.finish()?;
+    let tcp_to_client = async {
+        let copied = tokio::io::copy(&mut tcp_read, &mut send).await?;
+        send.finish()?;
+
+        Ok::<u64, Error>(copied)
+    };
+
+    let (client_bytes, server_bytes) = tokio::try_join!(client_to_tcp, tcp_to_client)?;
+
+    println!("Proxy closed: client -> TCP: {client_bytes}, TCP -> client: {server_bytes}");
+
     Ok(())
 }
 
 #[derive(Debug, Clone)]
-pub struct Tunnel {
+pub struct TunnelConfig {
+    pub allowed_ports: Vec<u16>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TunnelProtocol {
     allowed_ports: Vec<u16>,
 }
 
-impl Tunnel {
-    pub fn new(allowed_ports: Vec<u16>) -> Self {
-        Self { allowed_ports }
+impl TunnelProtocol {
+    pub fn new(config: &TunnelConfig) -> Self {
+        Self {
+            allowed_ports: config.allowed_ports.clone(),
+        }
     }
 
     fn port_allowed(&self, port: u16) -> bool {
@@ -43,7 +65,7 @@ impl Tunnel {
     }
 }
 
-impl ProtocolHandler for Tunnel {
+impl ProtocolHandler for TunnelProtocol {
     async fn accept(&self, connection: Connection) -> std::result::Result<(), AcceptError> {
         self.handle_connection(connection)
             .await
@@ -51,7 +73,7 @@ impl ProtocolHandler for Tunnel {
     }
 }
 
-impl Tunnel {
+impl TunnelProtocol {
     async fn handle_connection(&self, connection: Connection) -> Result<()> {
         loop {
             let (send, recv) = match connection.accept_bi().await {
@@ -62,7 +84,7 @@ impl Tunnel {
             let tunnel = self.clone();
 
             tokio::spawn(async move {
-                if let Err(error) = tunnel.handle_stream(send, recv).await {
+                if let Err(_error) = tunnel.handle_stream(send, recv).await {
                     println!("Tunnel stream failed");
                 }
             });
