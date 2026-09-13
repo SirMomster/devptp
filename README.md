@@ -81,6 +81,25 @@ The daemon uses a current-user-only local socket and newline-delimited JSON
 requests. The complete protocol, response shapes, method parameters, and
 examples are documented in [`docs/ipc-client.md`](docs/ipc-client.md).
 
+## Installation
+
+Install the latest release on Linux x86_64 or macOS Apple Silicon with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/SirMomster/devptp/main/scripts/install.sh | sh
+```
+
+The installer places `devptp` in `~/.local/bin`. Set `DEVPTP_INSTALL_DIR` to
+install elsewhere. Windows users can install the latest release from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/SirMomster/devptp/main/scripts/install.ps1 | iex
+```
+
+The PowerShell installer places `devptp.exe` in `%LOCALAPPDATA%\devptp\bin`.
+Set `$env:DEVPTP_INSTALL_DIR` to install elsewhere. You can also download the
+release `.zip` directly from [GitHub Releases](https://github.com/SirMomster/devptp/releases).
+
 ## Building and testing
 
 Run Cargo commands in the development container:
