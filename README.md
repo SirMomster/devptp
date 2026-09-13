@@ -20,13 +20,15 @@ as Asahi Linux can connect to a Linux serving machine.
 
 ### 1. Configure the serving machine
 
-Create `.devptp.toml` in the working directory:
+Optionally create `.devptp.toml` in the working directory:
 
 ```toml
 shared_ports = [8083, 3000]
 ```
 
-Only ports in `shared_ports` that are currently listening are advertised.
+Only ports in `shared_ports` that are currently listening are advertised. If no
+configuration file is present, the daemon starts with no shared ports. You can
+also set `DEVPTP_CONFIG` to an explicit configuration file.
 
 ### 2. Start the daemon
 

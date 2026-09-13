@@ -17,22 +17,26 @@ use crate::{config::Config, peer_manager::PeerManager, port_changes::PortChanges
 pub struct PortManager {
     known_ports: Mutex<BTreeSet<u16>>,
     peer_manager: Arc<PeerManager>,
-    config: Arc<Config>,
+    config: std::sync::OnceLock<Arc<Config>>,
     serving: AtomicBool,
 }
 
 impl PortManager {
-    pub fn new(peer_manager: Arc<PeerManager>, config: Arc<Config>) -> Self {
+    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
         Self {
             known_ports: Mutex::new(BTreeSet::new()),
             peer_manager,
-            config,
+            config: std::sync::OnceLock::new(),
             serving: AtomicBool::new(false),
         }
     }
 
     // handle loop to run which checkes for ports on the host system (and see which have been
     // registered)
+    pub fn set_config(&self, config: Arc<Config>) {
+        let _ = self.config.set(config);
+    }
+
     pub fn enable(&self) {
         self.serving.store(true, Ordering::Release);
     }
@@ -57,8 +61,10 @@ impl PortManager {
 
             let peer_manager = self.peer_manager.clone();
             if !port_changes.added.is_empty() {
-                let added_allowed_ports =
-                    self.config.shared_ports.intersection(&port_changes.added);
+                let Some(config) = self.config.get() else {
+                    continue;
+                };
+                let added_allowed_ports = config.shared_ports.intersection(&port_changes.added);
                 let ports: Vec<u16> = added_allowed_ports.into_iter().copied().collect();
                 if ports.is_empty() {
                     continue;
@@ -71,8 +77,10 @@ impl PortManager {
             }
 
             if !port_changes.removed.is_empty() {
-                let removed_allowed_ports =
-                    self.config.shared_ports.intersection(&port_changes.removed);
+                let Some(config) = self.config.get() else {
+                    continue;
+                };
+                let removed_allowed_ports = config.shared_ports.intersection(&port_changes.removed);
                 let ports: Vec<u16> = removed_allowed_ports.into_iter().copied().collect();
                 if ports.is_empty() {
                     continue;
@@ -121,10 +129,9 @@ impl PortManager {
         drop(guard);
 
         self.config
-            .shared_ports
-            .intersection(&ports)
-            .copied()
-            .collect()
+            .get()
+            .map(|config| config.shared_ports.intersection(&ports).copied().collect())
+            .unwrap_or_default()
     }
 
     pub async fn allowed_known_ports(&self) -> Vec<u16> {

@@ -3,7 +3,6 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
 use crate::{
-    config::get_config,
     dev_ptp_protocol::DevPTP,
     error::{Error, Result},
     ipc_manager::{self, IPCManager},
@@ -40,13 +39,11 @@ pub struct Status {
 
 impl Daemon {
     pub async fn run() -> Result<DaemonHandle> {
-        let config = Arc::new(get_config()?);
-
         let endpoint = Endpoint::bind(presets::N0).await?;
         endpoint.online().await;
 
         let peer_manager = Arc::new(PeerManager::new());
-        let port_manager = Arc::new(PortManager::new(peer_manager.clone(), config.clone()));
+        let port_manager = Arc::new(PortManager::new(peer_manager.clone()));
 
         let daemon = Arc::new(Self {
             endpoint,
@@ -143,6 +140,8 @@ impl Daemon {
 
         #[cfg(target_os = "linux")]
         {
+            let config = Arc::new(crate::config::get_config()?);
+            self.port_manager.set_config(config);
             let mut router_ref = self.router.lock().await;
             if router_ref.is_some() {
                 return Err(Error::Custom("Router already exists".to_string()));
