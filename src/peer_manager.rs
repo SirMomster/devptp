@@ -50,6 +50,10 @@ impl PeerManager {
     pub fn peers(&self) -> Vec<Arc<Peer>> {
         self.peers.read().unwrap().iter().cloned().collect()
     }
+
+    pub fn len(&self) -> usize {
+        self.peers.read().unwrap().len()
+    }
 }
 
 impl Default for PeerManager {

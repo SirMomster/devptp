@@ -22,7 +22,10 @@ enum Commands {
         local_port: u16,
     },
     Status {},
-    Disconnect {},
+    Disconnect {
+        #[arg(long)]
+        port: Option<u16>,
+    },
     ListForwardedPorts {},
     Shutdown {},
 }
@@ -50,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
             client.send_expose(*local_port).await?;
         }
         Some(Commands::Status {}) => client.send_status().await?,
-        Some(Commands::Disconnect {}) => client.send_disconnect().await?,
+        Some(Commands::Disconnect { port }) => client.send_disconnect(*port).await?,
         Some(Commands::ListForwardedPorts {}) => client.send_list_forwarded_ports().await?,
         Some(Commands::Shutdown {}) => client.send_shutdown().await?,
         None => {

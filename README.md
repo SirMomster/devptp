@@ -66,13 +66,13 @@ ports. Use `status` to inspect the connection and forwarded ports.
 
 | Command | Description |
 |---|---|
-| `start-serving` | Start Linux serving and return an endpoint ticket |
-| `connect --ticket <ticket>` | Connect to a serving peer |
+| `start-serving` | **Serving daemon (Linux):** advertise local services and return an endpoint ticket |
+| `connect --ticket <ticket>` | **Connecting daemon:** connect to a serving peer and create local forwarding listeners |
 | `ping` | Ping the connected peer |
 | `status` | Return daemon state as JSON |
 | `list-forwarded-ports` | List configured, detected ports as JSON |
 | `expose <port>` | Request a port exposure |
-| `disconnect` | Close the peer and clean up forwarding |
+| `disconnect [--port <port>]` | Stop one forwarded port or close the peer and clean up forwarding |
 | `shutdown` | Gracefully stop the daemon |
 
 The CLI prints the raw JSON IPC response, making it suitable for scripts.

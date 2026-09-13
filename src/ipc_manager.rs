@@ -28,6 +28,11 @@ struct TicketParams {
     ticket: String,
 }
 
+#[derive(Deserialize)]
+struct DisconnectParams {
+    port: Option<u16>,
+}
+
 impl IPCManager {
     pub fn new(daemon: Arc<Daemon>) -> Self {
         Self { daemon }
@@ -148,13 +153,22 @@ impl IPCManager {
                 Err(error) => Err(error),
             },
             "status" => Ok(json!(self.daemon.status().await)),
-            "list_forwarded_ports" => {
-                Ok(json!({"ports": self.daemon.status().await.forwarded_ports}))
-            }
-            "disconnect" => {
-                self.daemon.disconnect().await;
-                Ok(json!({"connected": false}))
-            }
+            "list_forwarded_ports" => Ok(json!({"ports": self.daemon.forwarded_ports().await})),
+            "disconnect" => match serde_json::from_value::<DisconnectParams>(request.params) {
+                Ok(params) => match params.port {
+                    Some(port) => self
+                        .daemon
+                        .disconnect_port(port)
+                        .await
+                        .map(|_| json!({"port": port, "forwarded": false})),
+                    None => self
+                        .daemon
+                        .disconnect()
+                        .await
+                        .map(|_| json!({"connected": false})),
+                },
+                Err(error) => Err(crate::error::Error::Custom(error.to_string())),
+            },
             "shutdown" => Ok(json!({"shutdown": true})),
             _ => Err(crate::error::Error::Custom(format!(
                 "Unknown method: {}",

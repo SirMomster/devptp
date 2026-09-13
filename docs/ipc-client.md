@@ -134,20 +134,27 @@ Result:
 ```json
 {
   "running": true,
+  "role": "connecting",
   "serving": false,
   "connected": true,
   "ticket": null,
-  "forwarded_ports": [8083]
+  "forwarded_ports": [8083],
+  "available_ports": []
 }
 ```
 
-`forwarded_ports` contains currently detected ports that are allowed by
+`role` is `idle`, `serving`, or `connecting`. A serving daemon owns the remote
+connection and reports `available_ports`; a connecting daemon owns the local
+forwarding listeners and reports `forwarded_ports`.
+
+`forwarded_ports` contains ports currently being forwarded by this client.
+`available_ports` contains ports detected by the daemon and allowed by
 `shared_ports` in `.devptp.toml`. Before the port monitor has completed its
 first scan it may be empty.
 
 ### `list_forwarded_ports`
 
-Returns the same configured-and-detected port set in a smaller result.
+Returns the ports currently being forwarded by this client.
 
 ```json
 {"id":6,"method":"list_forwarded_ports","params":{}}
@@ -161,11 +168,26 @@ Result:
 
 ### `disconnect`
 
-Closes the active peer connection, aborts forwarding listeners, and clears
-connection state. It is safe to call when already disconnected.
+With no port, closes the active peer connection, aborts forwarding listeners,
+and clears connection state. With a `port`, only that forwarding listener is
+stopped.
+
+Disconnect one forwarded port:
 
 ```json
-{"id":7,"method":"disconnect","params":{}}
+{"id":7,"method":"disconnect","params":{"port":8083}}
+```
+
+Result:
+
+```json
+{"port":8083,"forwarded":false}
+```
+
+Disconnect the peer entirely:
+
+```json
+{"id":8,"method":"disconnect","params":{}}
 ```
 
 Result:

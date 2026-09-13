@@ -61,8 +61,8 @@ impl Client {
     pub async fn send_status(&self) -> Result<()> {
         self.command("status", json!({})).await
     }
-    pub async fn send_disconnect(&self) -> Result<()> {
-        self.command("disconnect", json!({})).await
+    pub async fn send_disconnect(&self, port: Option<u16>) -> Result<()> {
+        self.command("disconnect", json!({"port": port})).await
     }
     pub async fn send_list_forwarded_ports(&self) -> Result<()> {
         self.command("list_forwarded_ports", json!({})).await

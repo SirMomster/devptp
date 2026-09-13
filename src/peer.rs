@@ -202,6 +202,13 @@ impl Peer {
         Ok(())
     }
 
+    pub async fn exposed_ports(&self) -> Vec<u16> {
+        let ports = self.exposed_ports.lock().await;
+        let mut ports: Vec<u16> = ports.keys().copied().collect();
+        ports.sort_unstable();
+        ports
+    }
+
     pub async fn shutdown(&self) {
         let mut ports = self.exposed_ports.lock().await;
         for (_, handle) in ports.drain() {

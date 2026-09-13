@@ -14,6 +14,14 @@ use crate::{
 use iroh::{Endpoint, endpoint::presets, protocol::Router};
 use iroh_tickets::endpoint::EndpointTicket;
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Idle,
+    Serving,
+    Connecting,
+}
+
 pub struct Daemon {
     endpoint: Endpoint,
     router: Mutex<Option<Router>>,
@@ -21,6 +29,7 @@ pub struct Daemon {
     peer_manager: Arc<PeerManager>,
     port_manager: Arc<PortManager>,
     pub(crate) shutdown: Arc<Notify>,
+    role: Mutex<Role>,
 }
 
 pub struct DaemonHandle {
@@ -31,10 +40,12 @@ pub struct DaemonHandle {
 #[derive(Serialize)]
 pub struct Status {
     pub running: bool,
+    pub role: Role,
     pub serving: bool,
     pub connected: bool,
     pub ticket: Option<String>,
     pub forwarded_ports: Vec<u16>,
+    pub available_ports: Vec<u16>,
 }
 
 impl Daemon {
@@ -52,6 +63,7 @@ impl Daemon {
             peer_manager: peer_manager.clone(),
             port_manager: port_manager.clone(),
             shutdown: Arc::new(Notify::new()),
+            role: Mutex::new(Role::Idle),
         });
 
         let ipc_manager = Arc::new(ipc_manager::IPCManager::new(daemon.clone()));
@@ -85,6 +97,11 @@ impl Daemon {
     }
 
     pub async fn start_peer(&self, ticket: String) -> Result<()> {
+        if !matches!(*self.role.lock().await, Role::Idle) {
+            return Err(Error::Custom(
+                "connect is only available on an idle daemon".into(),
+            ));
+        }
         let ticket: EndpointTicket = ticket
             .parse()
             .map_err(|_| Error::Custom("Bad ticket".into()))?;
@@ -101,6 +118,7 @@ impl Daemon {
         {
             let mut client_peer = self.client_peer.lock().await;
             *client_peer = Some(peer.clone());
+            *self.role.lock().await = Role::Connecting;
         }
 
         peer.clone().run().await;
@@ -119,6 +137,11 @@ impl Daemon {
     }
 
     pub async fn forward_local_service(&self, local_port: u16) -> Result<()> {
+        if !matches!(*self.role.lock().await, Role::Serving) {
+            return Err(Error::Custom(
+                "expose_port is only available on a serving daemon".into(),
+            ));
+        }
         let peers = self.peer_manager.peers();
 
         for peer in peers {
@@ -131,6 +154,11 @@ impl Daemon {
     }
 
     pub async fn start_receiver(&self) -> Result<()> {
+        if !matches!(*self.role.lock().await, Role::Idle | Role::Serving) {
+            return Err(Error::Custom(
+                "A connecting daemon cannot start serving".into(),
+            ));
+        }
         #[cfg(not(target_os = "linux"))]
         {
             return Err(Error::Custom(
@@ -156,20 +184,55 @@ impl Daemon {
 
             *router_ref = Some(router);
             self.port_manager.enable();
+            *self.role.lock().await = Role::Serving;
         }
 
         Ok(())
     }
 
-    pub async fn disconnect(&self) {
-        if let Some(peer) = self.client_peer.lock().await.take() {
-            peer.shutdown().await;
+    pub async fn disconnect_port(&self, port: u16) -> Result<()> {
+        if !matches!(*self.role.lock().await, Role::Connecting) {
+            return Err(Error::Custom(
+                "Only a connecting daemon can disconnect a forwarded port".into(),
+            ));
+        }
+        let peer = self
+            .client_peer
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| Error::Custom("No peer is connected".into()))?;
+        peer.clone().unexpose_port(port).await
+    }
+
+    pub async fn forwarded_ports(&self) -> Vec<u16> {
+        match self.client_peer.lock().await.clone() {
+            Some(peer) => peer.exposed_ports().await,
+            None => Vec::new(),
         }
     }
 
+    pub async fn disconnect(&self) -> Result<()> {
+        if !matches!(*self.role.lock().await, Role::Connecting) {
+            return Err(Error::Custom(
+                "disconnect is only available on a connecting daemon".into(),
+            ));
+        }
+        if let Some(peer) = self.client_peer.lock().await.take() {
+            peer.shutdown().await;
+        }
+        *self.role.lock().await = Role::Idle;
+        Ok(())
+    }
+
     pub async fn status(&self) -> Status {
-        let serving = self.router.lock().await.is_some();
-        let connected = self.client_peer.lock().await.is_some();
+        let role = *self.role.lock().await;
+        let serving = matches!(role, Role::Serving);
+        let connected = if serving {
+            self.peer_manager.len() > 0
+        } else {
+            self.client_peer.lock().await.is_some()
+        };
         let ticket = if serving {
             self.get_ticket().await.ok()
         } else {
@@ -180,7 +243,17 @@ impl Daemon {
             serving,
             connected,
             ticket,
-            forwarded_ports: self.port_manager.allowed_known_ports().await,
+            role,
+            forwarded_ports: if matches!(role, Role::Connecting) {
+                self.forwarded_ports().await
+            } else {
+                Vec::new()
+            },
+            available_ports: if serving {
+                self.port_manager.allowed_known_ports().await
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -190,7 +263,7 @@ impl Daemon {
 
     pub async fn shutdown(&self) {
         self.port_manager.disable();
-        self.disconnect().await;
+        let _ = self.disconnect().await;
         if let Some(router) = self.router.lock().await.take() {
             let _ = router.shutdown().await;
         }
