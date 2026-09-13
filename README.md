@@ -5,8 +5,8 @@
 
 `devptp` is a small peer-to-peer development networking utility. A Linux
 machine can serve selected local TCP services to a remote workstation through
-an iroh peer-to-peer connection. Windows and macOS clients can connect to a
-Linux serving machine without performing local port discovery.
+an iroh peer-to-peer connection. Windows clients and Linux aarch64 systems such
+as Asahi Linux can connect to a Linux serving machine.
 
 ## Features
 
@@ -14,7 +14,7 @@ Linux serving machine without performing local port discovery.
 - Linux-only serving and automatic local port discovery.
 - Configurable allowed ports.
 - Local JSON IPC for automation and integrations.
-- Linux x86_64, Windows x86_64, and macOS Apple Silicon release builds.
+- Linux x86_64, Linux aarch64 (including Asahi Linux), and Windows x86_64 release builds.
 
 ## Quick start
 
@@ -83,7 +83,7 @@ examples are documented in [`docs/ipc-client.md`](docs/ipc-client.md).
 
 ## Installation
 
-Install the latest release on Linux x86_64 or macOS Apple Silicon with:
+Install the latest release on Linux x86_64 or Linux aarch64 (including Asahi Linux) with:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/SirMomster/devptp/main/scripts/install.sh | sh
@@ -122,9 +122,9 @@ releases are generated automatically when a `v*` tag is pushed.
 
 ## Project status
 
-The current release is `0.1.0-alpha.1`. The networking and IPC layers are implemented. The daemon is intentionally
-small: Linux handles service discovery and serving, while Windows and macOS
-are connecting clients. Additional forwarding policies can be added without
+The current release is `0.1.2`. The networking and IPC layers are implemented. The daemon is intentionally
+small: Linux handles service discovery and serving, while Windows is a
+connecting client. Additional forwarding policies can be added without
 changing the JSON IPC transport.
 
 ## License

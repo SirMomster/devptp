@@ -10,12 +10,12 @@ case "${OS}:${ARCH}" in
   Linux:x86_64|Linux:amd64)
     ASSET="devptp-linux-x86_64.tar.gz"
     ;;
-  Darwin:arm64|Darwin:aarch64)
-    ASSET="devptp-macos-aarch64.tar.gz"
+  Linux:aarch64|Linux:arm64)
+    ASSET="devptp-linux-aarch64.tar.gz"
     ;;
   *)
     echo "Unsupported platform: ${OS}/${ARCH}" >&2
-    echo "Supported platforms: Linux x86_64 and macOS arm64" >&2
+    echo "Supported platforms: Linux x86_64 and Linux aarch64 (including Asahi Linux)" >&2
     exit 1
     ;;
 esac

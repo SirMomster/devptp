@@ -4,7 +4,7 @@ The daemon can be built from Linux for:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-pc-windows-gnu`
-- `aarch64-apple-darwin`
+- `aarch64-unknown-linux-gnu` (including Asahi Linux)
 
 Install [Zig](https://ziglang.org/) and `cargo-zigbuild`, then run:
 
@@ -16,5 +16,5 @@ cargo install cargo-zigbuild
 Binaries are produced below `target/<target>/release/`.
 
 `start_serving` and Linux `/proc` port detection are compiled only for Linux.
-Windows and macOS builds remain connecting clients and return a structured IPC
-error if `start_serving` is requested.
+Windows remains a connecting client and returns a structured IPC error if
+`start_serving` is requested.

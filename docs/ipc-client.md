@@ -7,7 +7,7 @@ Python, Node.js, shell scripts, or other applications.
 
 The daemon exposes a local, newline-delimited JSON stream:
 
-- Linux/macOS: `$XDG_RUNTIME_DIR/devptp.sock` when `XDG_RUNTIME_DIR` is set,
+- Linux: `$XDG_RUNTIME_DIR/devptp.sock` when `XDG_RUNTIME_DIR` is set,
   otherwise `/tmp/devptp.sock`.
 - Windows: the platform temporary directory, as `devptp.sock`.
 
@@ -194,7 +194,7 @@ Result:
 1. Start the daemon process: `devptp --daemon`.
 2. Connect to the socket.
 3. Send a `start_serving` request on Linux, or a `connect` request on Windows
-   and macOS.
+   when connecting to a Linux serving machine.
 4. Read one newline-terminated response per request.
 5. Match responses using `id` and check `ok` before reading `result`.
 6. Send `disconnect` or `shutdown` when finished.
