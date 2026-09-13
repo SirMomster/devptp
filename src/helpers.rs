@@ -1,5 +1,5 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::io;
+use std::{io, net::TcpListener};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 pub async fn send_json<W, T>(writer: &mut W, message: &T) -> io::Result<()>
@@ -28,4 +28,13 @@ where
     serde_json::from_str(&line)
         .map(Some)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+pub fn port_is_available(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+pub fn get_first_available_port(start_port: u16) -> Option<u16> {
+    let end_port = u16::MAX - 1;
+    (start_port..=end_port).find(|port| port_is_available(*port))
 }

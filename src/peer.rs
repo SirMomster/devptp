@@ -2,13 +2,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     error::{Error, Result},
-    helpers::{receive_json, send_json},
+    helpers::{get_first_available_port, receive_json, send_json},
+    port_manager,
     protocol::Message,
 };
 
 use iroh::{
-    endpoint::{Connection, RecvStream, SendStream},
     EndpointId,
+    endpoint::{Connection, RecvStream, SendStream},
 };
 
 use tokio::{
@@ -22,14 +23,19 @@ use tokio::{
 pub struct Peer {
     id: EndpointId,
     connection: Connection,
+    port_manager: Option<Arc<port_manager::PortManager>>,
     exposed_ports: Mutex<HashMap<u16, JoinHandle<()>>>,
 }
 
 impl Peer {
-    pub fn new(connection: Connection) -> Self {
+    pub fn new(
+        connection: Connection,
+        port_manager: Option<Arc<port_manager::PortManager>>,
+    ) -> Self {
         Self {
             id: connection.remote_id(),
             connection,
+            port_manager,
             exposed_ports: Mutex::new(HashMap::new()),
         }
     }
@@ -77,9 +83,9 @@ impl Peer {
      * Peer loops
      */
 
-    pub fn run(self: Arc<Self>) {
+    pub async fn run(self: Arc<Self>) {
         self.clone().run_uni_loop();
-        self.run_bi_loop();
+        self.clone().run_bi_loop();
     }
 
     fn run_uni_loop(self: Arc<Self>) {
@@ -119,6 +125,51 @@ impl Peer {
                             println!("Failed to unexpose port {}", e);
                         }
                     }
+                    Message::NewRemovedPorts { value } => {
+                        println!("Got to remove ports: {:?}", value);
+                        let inner = self.clone();
+                        // TODO: Ensure a expose is only handled once till unexpose
+                        for port in value {
+                            if let Err(e) = inner.clone().unexpose_port(port).await {
+                                println!("Failed to expose port {}", e);
+                            }
+                        }
+                    }
+                    Message::NewKnownPorts { value } => {
+                        println!("Got known ports: {:?}", value);
+                        let inner = self.clone();
+                        // TODO: Ensure a expose is only handled once till unexpose
+                        for port in value {
+                            if let Err(e) = inner.clone().expose_port(port).await {
+                                println!("Failed to expose port {}", e);
+                            }
+                        }
+                    }
+                    Message::GetPorts => {
+                        if let Some(port_manager) = &self.port_manager {
+                            println!("Found port_manager; waiting for lock");
+
+                            println!("Acquired port_manager lock");
+                            let ports = port_manager.get_allowed_known_ports().await;
+
+                            println!("Received ports: {:?}", ports);
+
+                            if !ports.is_empty() {
+                                let port_vec: Vec<u16> = ports.into_iter().collect();
+                                let _ = self.send(&Message::KnownPorts { value: port_vec }).await;
+                            }
+                        }
+                    }
+                    Message::KnownPorts { value } => {
+                        println!("Got Known Ports from Connect: {:?}", value);
+                        let inner = self.clone();
+                        // TODO: Ensure a expose is only handled once till unexpose
+                        for port in value {
+                            if let Err(e) = inner.clone().expose_port(port).await {
+                                println!("Failed to expose port {}", e);
+                            }
+                        }
+                    }
                     Message::ForwardTcp { .. } => {
                         eprintln!("Received ForwardTcp on uni stream; ignoring");
                     }
@@ -149,6 +200,14 @@ impl Peer {
         self.exposed_ports.lock().await.insert(local_port, handle);
 
         Ok(())
+    }
+
+    pub async fn shutdown(&self) {
+        let mut ports = self.exposed_ports.lock().await;
+        for (_, handle) in ports.drain() {
+            handle.abort();
+        }
+        self.connection.close(0u32.into(), b"disconnect");
     }
 
     pub async fn unexpose_port(self: Arc<Self>, remote_port: u16) -> Result<()> {
@@ -192,7 +251,9 @@ impl Peer {
      */
 
     async fn serve_forwarded_port(self: Arc<Self>, local_port: u16) -> Result<()> {
-        let remote_port = 8080; // TODO: either use local or a available port
+        let remote_port = get_first_available_port(local_port)
+            .ok_or(Error::Custom("Failed to get an available port".to_string()))?;
+
         let listener = TcpListener::bind(("127.0.0.1", remote_port)).await?;
 
         println!("Forwarding 127.0.0.1:{remote_port} -> peer -> 127.0.0.1:{local_port}");
@@ -242,6 +303,7 @@ impl Peer {
 
         match message {
             Message::ForwardTcp { port } => {
+                // TODO: should check here for the port being used... should be listed!
                 println!("Opening daemon-side TCP connection to 127.0.0.1:{port}");
 
                 let tcp = TcpStream::connect(("127.0.0.1", port)).await?;

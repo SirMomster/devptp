@@ -1,3 +1,22 @@
-/target
+# Rust build output
+/target/
+
+# Local IPC socket
+/devptp.sock
+*.sock
+
+# Local configuration overrides
+.devptp.local.toml
+
+# Logs and runtime files
+*.log
+*.pid
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Pi local state
 .pi/worktrees/
 .pi/devcontainer.override.json

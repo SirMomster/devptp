@@ -22,6 +22,8 @@ pub enum Error {
 
     #[from]
     IoError(std::io::Error),
+    #[from]
+    TomlError(toml::de::Error),
 }
 
 impl std::error::Error for Error {}

@@ -1,8 +1,13 @@
 pub mod client;
+pub mod config;
 pub mod daemon;
+pub mod dev_ptp_protocol;
 pub mod error;
 pub mod helpers;
+pub mod ipc_manager;
 pub mod mediator;
 pub mod peer;
 pub mod peer_manager;
+pub mod port_changes;
+pub mod port_manager;
 pub mod protocol;
