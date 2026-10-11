@@ -1,18 +1,28 @@
 use std::sync::Arc;
 
-use crate::{peer::Peer, peer_manager::PeerManager, port_manager::PortManager};
+use crate::{
+    peer::{Peer, TrafficStats},
+    peer_manager::PeerManager,
+    port_manager::PortManager,
+};
 
 #[derive(Debug)]
 pub struct DevPTP {
     peer_manager: Arc<PeerManager>,
     port_manager: Arc<PortManager>,
+    traffic: Arc<TrafficStats>,
 }
 
 impl DevPTP {
-    pub fn new(peer_manager: Arc<PeerManager>, port_manager: Arc<PortManager>) -> Self {
+    pub fn new(
+        peer_manager: Arc<PeerManager>,
+        port_manager: Arc<PortManager>,
+        traffic: Arc<TrafficStats>,
+    ) -> Self {
         Self {
             peer_manager,
             port_manager,
+            traffic,
         }
     }
 
@@ -28,7 +38,11 @@ impl iroh::protocol::ProtocolHandler for DevPTP {
         &self,
         connection: iroh::endpoint::Connection,
     ) -> std::result::Result<(), iroh::protocol::AcceptError> {
-        let peer = Peer::new(connection, Some(self.port_manager.clone()));
+        let peer = Peer::new(
+            connection,
+            Some(self.port_manager.clone()),
+            self.traffic.clone(),
+        );
 
         self.handshake(&peer)
             .await

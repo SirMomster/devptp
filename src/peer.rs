@@ -1,4 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use crate::{
     error::{Error, Result},
@@ -19,10 +25,32 @@ use tokio::{
     task::JoinHandle,
 };
 
+#[derive(Debug, Default)]
+pub struct TrafficStats {
+    sent: AtomicU64,
+    received: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TrafficSnapshot {
+    pub sent: u64,
+    pub received: u64,
+}
+
+impl TrafficStats {
+    pub fn snapshot(&self) -> TrafficSnapshot {
+        TrafficSnapshot {
+            sent: self.sent.load(Ordering::Relaxed),
+            received: self.received.load(Ordering::Relaxed),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Peer {
     id: EndpointId,
     connection: Connection,
+    traffic: Arc<TrafficStats>,
     port_manager: Option<Arc<port_manager::PortManager>>,
     exposed_ports: Mutex<HashMap<u16, JoinHandle<()>>>,
 }
@@ -31,10 +59,12 @@ impl Peer {
     pub fn new(
         connection: Connection,
         port_manager: Option<Arc<port_manager::PortManager>>,
+        traffic: Arc<TrafficStats>,
     ) -> Self {
         Self {
             id: connection.remote_id(),
             connection,
+            traffic,
             port_manager,
             exposed_ports: Mutex::new(HashMap::new()),
         }
@@ -272,7 +302,7 @@ impl Peer {
         // This header identifies what this new stream is for.
         send_json(&mut send, &Message::ForwardTcp { port: local_port }).await?;
 
-        Self::bridge_tcp(send, recv, tcp).await
+        self.bridge_tcp(send, recv, tcp).await
     }
 
     /*
@@ -296,7 +326,7 @@ impl Peer {
 
                 let tcp = TcpStream::connect(("127.0.0.1", port)).await?;
 
-                Self::bridge_tcp(send, recv, tcp).await
+                self.bridge_tcp(send, recv, tcp).await
             }
 
             other => Err(Error::Custom(format!(
@@ -309,14 +339,15 @@ impl Peer {
      * Actual byte bridge
      */
 
-    async fn bridge_tcp<R>(mut send: SendStream, mut recv: R, tcp: TcpStream) -> Result<()>
+    async fn bridge_tcp<R>(&self, mut send: SendStream, mut recv: R, tcp: TcpStream) -> Result<()>
     where
         R: AsyncRead + Unpin,
     {
         let (mut tcp_read, mut tcp_write) = tcp.into_split();
 
         let iroh_to_tcp = async {
-            tokio::io::copy(&mut recv, &mut tcp_write).await?;
+            let bytes = tokio::io::copy(&mut recv, &mut tcp_write).await?;
+            self.traffic.received.fetch_add(bytes, Ordering::Relaxed);
 
             tcp_write.shutdown().await?;
 
@@ -324,7 +355,8 @@ impl Peer {
         };
 
         let tcp_to_iroh = async {
-            tokio::io::copy(&mut tcp_read, &mut send).await?;
+            let bytes = tokio::io::copy(&mut tcp_read, &mut send).await?;
+            self.traffic.sent.fetch_add(bytes, Ordering::Relaxed);
 
             send.finish()?;
 

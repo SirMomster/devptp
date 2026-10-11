@@ -77,6 +77,20 @@ ports. Use `status` to inspect the connection and forwarded ports.
 
 The CLI prints the raw JSON IPC response, making it suitable for scripts.
 
+## Interactive client
+
+Launch the cross-platform Ratatui client with:
+
+```bash
+cargo run --bin devptp-tui
+```
+
+Paste a serving ticket on the initial screen. The client owns its in-process
+daemon, shows forwarded and available ports, periodically measures RTT, and
+tracks application/tunnel traffic over a rolling two-minute graph. Use `r` to
+reconnect with the current ticket or `c`/`e` to enter a new one. Quitting while
+connected prompts before shutting down the daemon.
+
 ## Library integration
 
 The core runtime is available to Rust frontends through the library API. Start

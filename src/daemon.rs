@@ -6,7 +6,7 @@ use crate::{
     dev_ptp_protocol::DevPTP,
     error::{Error, Result},
     ipc_manager::{self, IPCManager},
-    peer::Peer,
+    peer::{Peer, TrafficSnapshot, TrafficStats},
     peer_manager::PeerManager,
     port_manager::PortManager,
     protocol::{ALPN, Message},
@@ -28,6 +28,7 @@ pub struct Daemon {
     client_peer: Arc<Mutex<Option<Arc<Peer>>>>,
     peer_manager: Arc<PeerManager>,
     port_manager: Arc<PortManager>,
+    traffic: Arc<TrafficStats>,
     shutdown: Arc<Notify>,
     role: Mutex<Role>,
 }
@@ -65,6 +66,7 @@ impl Daemon {
             client_peer: Arc::new(Mutex::new(None)),
             peer_manager: peer_manager.clone(),
             port_manager: port_manager.clone(),
+            traffic: Arc::new(TrafficStats::default()),
             shutdown: Arc::new(Notify::new()),
             role: Mutex::new(Role::Idle),
         });
@@ -113,6 +115,11 @@ impl Daemon {
         Ok(ipc_manager)
     }
 
+    /// Returns application-level tunnel traffic counters.
+    pub fn traffic(&self) -> TrafficSnapshot {
+        self.traffic.snapshot()
+    }
+
     /// Checks connectivity with the currently connected peer.
     pub async fn ping(&self) -> Result<()> {
         let peer = self
@@ -141,7 +148,7 @@ impl Daemon {
 
         let conn = self.endpoint.connect(ticket, ALPN).await?;
 
-        let peer = Arc::new(Peer::new(conn, None));
+        let peer = Arc::new(Peer::new(conn, None, self.traffic.clone()));
 
         peer.wait_for(&Message::Ping).await?;
         peer.send(&Message::Pong).await?;
@@ -206,7 +213,11 @@ impl Daemon {
             let router = iroh::protocol::Router::builder(self.endpoint.clone())
                 .accept(
                     ALPN,
-                    DevPTP::new(self.peer_manager.clone(), self.port_manager.clone()),
+                    DevPTP::new(
+                        self.peer_manager.clone(),
+                        self.port_manager.clone(),
+                        self.traffic.clone(),
+                    ),
                 )
                 .spawn();
 
