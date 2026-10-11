@@ -53,7 +53,6 @@ impl PortManager {
             }
 
             let port_changes = self.collect_ports().await;
-            println!("Port changes: {:?}", port_changes);
 
             {
                 *self.known_ports.lock().await = port_changes.ports_known;
@@ -121,9 +120,7 @@ impl PortManager {
     }
 
     pub async fn get_allowed_known_ports(&self) -> BTreeSet<u16> {
-        println!("Waiting for known_ports");
         let guard = self.known_ports.lock().await;
-        println!("Acquired known_ports");
 
         let ports = guard.clone();
         drop(guard);

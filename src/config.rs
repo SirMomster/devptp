@@ -3,17 +3,9 @@ use std::collections::BTreeSet;
 
 use crate::error::Result;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Config {
     pub shared_ports: BTreeSet<u16>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            shared_ports: BTreeSet::new(),
-        }
-    }
 }
 
 pub fn get_config() -> Result<Config> {

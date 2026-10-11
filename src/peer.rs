@@ -101,58 +101,45 @@ impl Peer {
                 };
 
                 match message {
-                    Message::Ping => {
-                        println!("Got ping from {}", self.id());
-                    }
+                    Message::Ping => {}
 
-                    Message::Pong => {
-                        println!("Got pong from {}", self.id());
-                    }
+                    Message::Pong => {}
 
-                    Message::Text { value } => {
-                        println!("Got text from {}: {value}", self.id());
-                    }
+                    Message::Text { .. } => {}
 
                     Message::ExposeTcp { local_port } => {
                         let inner = self.clone();
                         if let Err(e) = inner.expose_port(local_port).await {
-                            println!("Failed to expose port {}", e);
+                            eprintln!("Failed to expose port {}", e);
                         };
                     }
                     Message::UnexposeTcp { local_port } => {
                         let inner = self.clone();
                         if let Err(e) = inner.unexpose_port(local_port).await {
-                            println!("Failed to unexpose port {}", e);
+                            eprintln!("Failed to unexpose port {}", e);
                         }
                     }
                     Message::NewRemovedPorts { value } => {
-                        println!("Got to remove ports: {:?}", value);
                         let inner = self.clone();
                         // TODO: Ensure a expose is only handled once till unexpose
                         for port in value {
                             if let Err(e) = inner.clone().unexpose_port(port).await {
-                                println!("Failed to expose port {}", e);
+                                eprintln!("Failed to expose port {}", e);
                             }
                         }
                     }
                     Message::NewKnownPorts { value } => {
-                        println!("Got known ports: {:?}", value);
                         let inner = self.clone();
                         // TODO: Ensure a expose is only handled once till unexpose
                         for port in value {
                             if let Err(e) = inner.clone().expose_port(port).await {
-                                println!("Failed to expose port {}", e);
+                                eprintln!("Failed to expose port {}", e);
                             }
                         }
                     }
                     Message::GetPorts => {
                         if let Some(port_manager) = &self.port_manager {
-                            println!("Found port_manager; waiting for lock");
-
-                            println!("Acquired port_manager lock");
                             let ports = port_manager.get_allowed_known_ports().await;
-
-                            println!("Received ports: {:?}", ports);
 
                             if !ports.is_empty() {
                                 let port_vec: Vec<u16> = ports.into_iter().collect();
@@ -161,12 +148,11 @@ impl Peer {
                         }
                     }
                     Message::KnownPorts { value } => {
-                        println!("Got Known Ports from Connect: {:?}", value);
                         let inner = self.clone();
                         // TODO: Ensure a expose is only handled once till unexpose
                         for port in value {
                             if let Err(e) = inner.clone().expose_port(port).await {
-                                println!("Failed to expose port {}", e);
+                                eprintln!("Failed to expose port {}", e);
                             }
                         }
                     }
@@ -263,12 +249,8 @@ impl Peer {
 
         let listener = TcpListener::bind(("127.0.0.1", remote_port)).await?;
 
-        println!("Forwarding 127.0.0.1:{remote_port} -> peer -> 127.0.0.1:{local_port}");
-
         loop {
-            let (tcp, addr) = listener.accept().await?;
-
-            println!("Accepted connection on port {remote_port} from {addr}");
+            let (tcp, _addr) = listener.accept().await?;
 
             let peer = self.clone();
 
@@ -311,7 +293,6 @@ impl Peer {
         match message {
             Message::ForwardTcp { port } => {
                 // TODO: should check here for the port being used... should be listed!
-                println!("Opening daemon-side TCP connection to 127.0.0.1:{port}");
 
                 let tcp = TcpStream::connect(("127.0.0.1", port)).await?;
 

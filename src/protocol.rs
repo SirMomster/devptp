@@ -59,6 +59,70 @@ impl Response {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn request_round_trips_with_default_params() {
+        let request: Request = serde_json::from_value(json!({
+            "id": 7,
+            "method": "status"
+        }))
+        .expect("request should deserialize");
+
+        assert_eq!(request.id, Some(json!(7)));
+        assert_eq!(request.method, "status");
+        assert_eq!(request.params, Value::Null);
+    }
+
+    #[test]
+    fn responses_preserve_success_and_failure_shapes() {
+        let success = serde_json::to_value(Response::success(
+            Some(json!(1)),
+            json!({
+                "pong": true
+            }),
+        ))
+        .expect("success should serialize");
+        assert_eq!(
+            success,
+            json!({
+                "id": 1,
+                "ok": true,
+                "result": {"pong": true}
+            })
+        );
+
+        let failure = serde_json::to_value(Response::failure(
+            Some(json!(2)),
+            "command_failed",
+            "No peer is connected",
+        ))
+        .expect("failure should serialize");
+        assert_eq!(
+            failure,
+            json!({
+                "id": 2,
+                "ok": false,
+                "error": {
+                    "code": "command_failed",
+                    "message": "No peer is connected"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn message_wire_names_remain_stable() {
+        assert_eq!(
+            serde_json::to_value(Message::ExposeTcp { local_port: 8080 }).unwrap(),
+            json!({"type": "expose_tcp", "data": {"local_port": 8080}})
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Message {

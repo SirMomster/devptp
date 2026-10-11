@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
@@ -14,7 +14,7 @@ use crate::{
 use iroh::{Endpoint, endpoint::presets, protocol::Router};
 use iroh_tickets::endpoint::EndpointTicket;
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     Idle,
@@ -25,10 +25,10 @@ pub enum Role {
 pub struct Daemon {
     endpoint: Endpoint,
     router: Mutex<Option<Router>>,
-    pub client_peer: Arc<Mutex<Option<Arc<Peer>>>>,
+    client_peer: Arc<Mutex<Option<Arc<Peer>>>>,
     peer_manager: Arc<PeerManager>,
     port_manager: Arc<PortManager>,
-    pub(crate) shutdown: Arc<Notify>,
+    shutdown: Arc<Notify>,
     role: Mutex<Role>,
 }
 
@@ -37,7 +37,7 @@ pub struct DaemonHandle {
     pub ipc_manager: Arc<IPCManager>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
     pub running: bool,
     pub role: Role,
@@ -49,13 +49,16 @@ pub struct Status {
 }
 
 impl Daemon {
-    pub async fn run() -> Result<DaemonHandle> {
+    /// Starts the networking and port-management runtime without opening IPC.
+    ///
+    /// Frontends running in the same process can use the returned handle directly,
+    /// or call [`Daemon::start_ipc`] to expose the standard IPC interface too.
+    pub async fn start() -> Result<Arc<Self>> {
         let endpoint = Endpoint::bind(presets::N0).await?;
         endpoint.online().await;
 
         let peer_manager = Arc::new(PeerManager::new());
         let port_manager = Arc::new(PortManager::new(peer_manager.clone()));
-
         let daemon = Arc::new(Self {
             endpoint,
             router: Mutex::new(None),
@@ -66,8 +69,6 @@ impl Daemon {
             role: Mutex::new(Role::Idle),
         });
 
-        let ipc_manager = Arc::new(ipc_manager::IPCManager::new(daemon.clone()));
-
         let port_manager_clone = port_manager.clone();
         let shutdown = daemon.shutdown.clone();
         tokio::spawn(async move {
@@ -76,6 +77,29 @@ impl Daemon {
                 _ = shutdown.notified() => {},
             }
         });
+
+        Ok(daemon)
+    }
+
+    /// Starts the daemon and its standard local IPC server.
+    pub async fn run() -> Result<DaemonHandle> {
+        let daemon = Self::start().await?;
+        let ipc_manager = match daemon.start_ipc().await {
+            Ok(ipc_manager) => ipc_manager,
+            Err(error) => {
+                daemon.shutdown().await;
+                return Err(error);
+            }
+        };
+        Ok(DaemonHandle {
+            daemon,
+            ipc_manager,
+        })
+    }
+
+    /// Attaches the standard local IPC server to an already-running daemon.
+    pub async fn start_ipc(self: &Arc<Self>) -> Result<Arc<IPCManager>> {
+        let ipc_manager = Arc::new(ipc_manager::IPCManager::new(self.clone()));
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let ipc_manager_clone = ipc_manager.clone();
         tokio::spawn(async move {
@@ -86,14 +110,23 @@ impl Daemon {
         ready_rx
             .await
             .map_err(|_| Error::Custom("IPC server failed to start".into()))??;
-        println!("Daemon started, processes running");
+        Ok(ipc_manager)
+    }
 
-        let handle = DaemonHandle {
-            daemon: daemon.clone(),
-            ipc_manager: ipc_manager.clone(),
-        };
+    /// Checks connectivity with the currently connected peer.
+    pub async fn ping(&self) -> Result<()> {
+        let peer = self
+            .client_peer
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| Error::Custom("No peer is connected".into()))?;
+        peer.send(&Message::Ping).await.map(|_| ())
+    }
 
-        Ok(handle)
+    /// Returns a notification that fires when the daemon shuts down.
+    pub(crate) fn shutdown_signal(&self) -> Arc<Notify> {
+        self.shutdown.clone()
     }
 
     pub async fn start_peer(&self, ticket: String) -> Result<()> {
@@ -113,8 +146,6 @@ impl Daemon {
         peer.wait_for(&Message::Ping).await?;
         peer.send(&Message::Pong).await?;
 
-        println!("Peer handshake complete");
-
         {
             let mut client_peer = self.client_peer.lock().await;
             *client_peer = Some(peer.clone());
@@ -125,12 +156,9 @@ impl Daemon {
 
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            println!("Requesting initial list of peers");
-
             if let Err(e) = peer.send(&Message::GetPorts).await {
-                println!("Got an error {:?}", e);
+                eprintln!("Got an error {:?}", e);
             }
-            println!("Send request");
         });
 
         Ok(())
@@ -229,7 +257,7 @@ impl Daemon {
         let role = *self.role.lock().await;
         let serving = matches!(role, Role::Serving);
         let connected = if serving {
-            self.peer_manager.len() > 0
+            !self.peer_manager.is_empty()
         } else {
             self.client_peer.lock().await.is_some()
         };
@@ -276,5 +304,20 @@ impl Daemon {
             return Ok(EndpointTicket::new(router.endpoint().addr()).to_string());
         }
         Err(Error::Custom("Router not set".to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Daemon, Role};
+
+    #[tokio::test]
+    async fn runtime_starts_and_shuts_down_without_ipc() {
+        let daemon = Daemon::start().await.expect("runtime should start");
+        let status = daemon.status().await;
+        assert!(status.running);
+        assert!(matches!(status.role, Role::Idle));
+
+        daemon.shutdown().await;
     }
 }

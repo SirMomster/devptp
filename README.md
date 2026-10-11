@@ -77,6 +77,22 @@ ports. Use `status` to inspect the connection and forwarded ports.
 
 The CLI prints the raw JSON IPC response, making it suitable for scripts.
 
+## Library integration
+
+The core runtime is available to Rust frontends through the library API. Start
+only the runtime when the frontend runs in-process:
+
+```rust,no_run
+let daemon = devptp::Daemon::start().await?;
+let status = daemon.status().await;
+// Use typed operations and render `status` in the frontend.
+daemon.shutdown().await;
+```
+
+A frontend can also attach the standard IPC server to the same daemon with
+`daemon.start_ipc().await?`. The CLI's `--daemon` mode continues to use
+`Daemon::run()`, which starts both together.
+
 ## IPC integration
 
 The daemon uses a current-user-only local socket and newline-delimited JSON

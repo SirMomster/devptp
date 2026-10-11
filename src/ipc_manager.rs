@@ -62,11 +62,11 @@ impl IPCManager {
             }
         }
         let _ = ready.send(Ok(()));
-        println!("IPC server listening");
+        let shutdown = self.daemon.shutdown_signal();
 
         loop {
             tokio::select! {
-                _ = self.daemon.shutdown.notified() => break,
+                _ = shutdown.notified() => break,
                 result = listener.accept() => {
                     let stream = result?;
                     let manager = self.clone();
@@ -118,16 +118,7 @@ impl IPCManager {
     async fn dispatch(&self, request: Request) -> Response {
         let id = request.id.clone();
         let result = match request.method.as_str() {
-            "ping" => {
-                let peer = self.daemon.client_peer.lock().await.clone();
-                match peer {
-                    Some(peer) => peer
-                        .send(&crate::protocol::Message::Ping)
-                        .await
-                        .map(|_| json!({"pong": true})),
-                    None => Err(crate::error::Error::Custom("No peer is connected".into())),
-                }
-            }
+            "ping" => self.daemon.ping().await.map(|_| json!({"pong": true})),
             "start_serving" => match self.daemon.start_receiver().await {
                 Ok(()) => self
                     .daemon

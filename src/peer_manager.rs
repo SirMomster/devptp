@@ -20,7 +20,6 @@ impl PeerManager {
             self.peers.write().unwrap().push(cloned_peer);
         }
 
-        println!("Starting peer loop");
         arced_peer.run().await;
     }
 
@@ -37,11 +36,9 @@ impl PeerManager {
             match result {
                 Ok(_send_result) => {
                     // Handle send_result if Peer::send returns a Result.
-                    println!("Unable to send message because of error on send");
                 }
                 Err(_join_error) => {
                     // The task panicked or was cancelled.
-                    println!("Unable to send message because of join error");
                 }
             }
         }
@@ -53,6 +50,10 @@ impl PeerManager {
 
     pub fn len(&self) -> usize {
         self.peers.read().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.peers.read().unwrap().is_empty()
     }
 }
 
