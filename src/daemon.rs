@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
 use crate::{
+    #[cfg(target_os = "linux")]
     dev_ptp_protocol::DevPTP,
     error::{Error, Result},
     ipc_manager::{self, IPCManager},

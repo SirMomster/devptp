@@ -7,6 +7,8 @@
 pub use daemon::{Daemon, DaemonHandle, Role, Status};
 pub use error::{Error, Result};
 
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod client;
 pub mod config;
 pub mod daemon;
@@ -15,6 +17,7 @@ pub mod error;
 pub mod helpers;
 pub mod ipc_manager;
 pub mod mediator;
+pub mod mobile;
 pub mod peer;
 pub mod peer_manager;
 pub mod port_changes;

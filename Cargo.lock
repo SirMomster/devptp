@@ -813,6 +813,7 @@ dependencies = [
  "iroh",
  "iroh-ping",
  "iroh-tickets",
+ "jni 0.21.1",
  "ratatui",
  "serde",
  "serde_json",

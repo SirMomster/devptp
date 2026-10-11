@@ -6,4 +6,8 @@ services:
       dockerfile: ./Dockerfile
     volumes:
       - ..:/workspace/devptp:cached
+    # Allows adb inside the container to access a USB-connected Android device.
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
     command: sleep infinity
