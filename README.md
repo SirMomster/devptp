@@ -24,11 +24,16 @@ Optionally create `.devptp.toml` in the working directory:
 
 ```toml
 shared_ports = [8083, 3000]
+relay_url = "https://relay.example.com"
 ```
 
 Only ports in `shared_ports` that are currently listening are advertised. If no
 configuration file is present, the daemon starts with no shared ports. You can
-also set `DEVPTP_CONFIG` to an explicit configuration file.
+also set `DEVPTP_CONFIG` to an explicit configuration file. The daemon uses the
+configured relay URL for both connecting and serving endpoints; omit
+`relay_url` to use the default iroh relays. Pass `--config-file <path>` when
+starting the daemon to override normal config-path resolution, for example
+`devptp --daemon --config-file ./custom.toml`.
 
 ### 2. Start the daemon
 

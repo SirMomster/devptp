@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     port_manager::PortManager,
     protocol::{ALPN, Message},
 };
-use iroh::{Endpoint, endpoint::presets, protocol::Router};
+use iroh::{Endpoint, RelayMode, endpoint::presets, protocol::Router};
 use iroh_tickets::endpoint::EndpointTicket;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -24,6 +24,7 @@ pub enum Role {
 
 pub struct Daemon {
     endpoint: Endpoint,
+    config: Arc<crate::config::Config>,
     router: Mutex<Option<Router>>,
     client_peer: Arc<Mutex<Option<Arc<Peer>>>>,
     peer_manager: Arc<PeerManager>,
@@ -36,6 +37,16 @@ pub struct Daemon {
 pub struct DaemonHandle {
     pub daemon: Arc<Daemon>,
     pub ipc_manager: Arc<IPCManager>,
+}
+
+fn relay_mode(config: &crate::config::Config) -> Result<Option<RelayMode>> {
+    let Some(relay_url) = &config.relay_url else {
+        return Ok(None);
+    };
+    let relay_url = relay_url
+        .parse::<iroh::RelayUrl>()
+        .map_err(|error| Error::Custom(format!("invalid relay_url {relay_url:?}: {error}")))?;
+    Ok(Some(RelayMode::custom([relay_url])))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,13 +66,24 @@ impl Daemon {
     /// Frontends running in the same process can use the returned handle directly,
     /// or call [`Daemon::start_ipc`] to expose the standard IPC interface too.
     pub async fn start() -> Result<Arc<Self>> {
-        let endpoint = Endpoint::bind(presets::N0).await?;
+        Self::start_with_config(None).await
+    }
+
+    /// Starts the networking runtime using an optional explicit config file.
+    pub async fn start_with_config(config_file: Option<&Path>) -> Result<Arc<Self>> {
+        let config = Arc::new(crate::config::get_config_from(config_file)?);
+        let builder = match relay_mode(&config)? {
+            Some(relay_mode) => Endpoint::builder(presets::N0).relay_mode(relay_mode),
+            None => Endpoint::builder(presets::N0),
+        };
+        let endpoint = builder.bind().await?;
         endpoint.online().await;
 
         let peer_manager = Arc::new(PeerManager::new());
         let port_manager = Arc::new(PortManager::new(peer_manager.clone()));
         let daemon = Arc::new(Self {
             endpoint,
+            config,
             router: Mutex::new(None),
             client_peer: Arc::new(Mutex::new(None)),
             peer_manager: peer_manager.clone(),
@@ -85,7 +107,12 @@ impl Daemon {
 
     /// Starts the daemon and its standard local IPC server.
     pub async fn run() -> Result<DaemonHandle> {
-        let daemon = Self::start().await?;
+        Self::run_with_config(None).await
+    }
+
+    /// Starts the daemon and IPC server using an optional explicit config file.
+    pub async fn run_with_config(config_file: Option<&Path>) -> Result<DaemonHandle> {
+        let daemon = Self::start_with_config(config_file).await?;
         let ipc_manager = match daemon.start_ipc().await {
             Ok(ipc_manager) => ipc_manager,
             Err(error) => {
@@ -203,8 +230,7 @@ impl Daemon {
 
         #[cfg(target_os = "linux")]
         {
-            let config = Arc::new(crate::config::get_config()?);
-            self.port_manager.set_config(config);
+            self.port_manager.set_config(self.config.clone());
             let mut router_ref = self.router.lock().await;
             if router_ref.is_some() {
                 return Err(Error::Custom("Router already exists".to_string()));
@@ -320,7 +346,18 @@ impl Daemon {
 
 #[cfg(test)]
 mod tests {
-    use super::{Daemon, Role};
+    use super::{Daemon, Role, relay_mode};
+    use crate::config::Config;
+
+    #[test]
+    fn invalid_relay_url_is_rejected_with_context() {
+        let config = Config {
+            relay_url: Some("not a relay url".to_string()),
+            ..Config::default()
+        };
+        let error = relay_mode(&config).expect_err("invalid relay URL should fail");
+        assert!(error.to_string().contains("invalid relay_url"));
+    }
 
     #[tokio::test]
     async fn runtime_starts_and_shuts_down_without_ipc() {
