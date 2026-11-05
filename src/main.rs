@@ -8,6 +8,10 @@ struct Cli {
 
     #[arg(long)]
     daemon: bool,
+
+    /// Use this configuration file instead of normal config-path resolution.
+    #[arg(long, value_name = "PATH")]
+    config_file: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -35,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
     if args.daemon {
-        let handle = Daemon::run().await?;
+        let handle = Daemon::run_with_config(args.config_file.as_deref()).await?;
         tokio::select! {
             _ = tokio::signal::ctrl_c() => handle.daemon.shutdown().await,
             _ = handle.daemon.wait_for_shutdown() => {},
