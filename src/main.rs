@@ -2,6 +2,11 @@ use clap::{Parser, Subcommand};
 use devptp::{client::Client, daemon::Daemon};
 
 #[derive(Parser)]
+#[command(
+    version,
+    about = concat!("Peer-to-peer development networking utility v", env!("CARGO_PKG_VERSION")),
+    after_long_help = "Configure the relay with `relay_url = \"https://relay.example.com\"` in your TOML config. The active relay URL is shown by `devptp status`."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -25,6 +30,7 @@ enum Commands {
     Expose {
         local_port: u16,
     },
+    #[command(about = "Show daemon status, including the active relay URL")]
     Status {},
     Disconnect {
         #[arg(long)]

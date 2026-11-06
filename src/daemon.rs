@@ -56,6 +56,7 @@ pub struct Status {
     pub serving: bool,
     pub connected: bool,
     pub ticket: Option<String>,
+    pub relay_url: Option<String>,
     pub forwarded_ports: Vec<u16>,
     pub available_ports: Vec<u16>,
 }
@@ -308,6 +309,12 @@ impl Daemon {
             serving,
             connected,
             ticket,
+            relay_url: self
+                .endpoint
+                .addr()
+                .relay_urls()
+                .next()
+                .map(ToString::to_string),
             role,
             forwarded_ports: if matches!(role, Role::Connecting) {
                 self.forwarded_ports().await
@@ -364,6 +371,7 @@ mod tests {
         let daemon = Daemon::start().await.expect("runtime should start");
         let status = daemon.status().await;
         assert!(status.running);
+        assert!(status.relay_url.is_some());
         assert!(matches!(status.role, Role::Idle));
 
         daemon.shutdown().await;
